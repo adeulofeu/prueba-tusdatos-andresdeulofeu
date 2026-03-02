@@ -1,3 +1,4 @@
+import os
 import json
 import random
 import sqlite3
@@ -9,7 +10,9 @@ import pandas as pd
 # =========================
 # Config
 # =========================
-DB_FILE = Path("analytics.db")  # ajusta si tu DB está en otra ruta
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DB_PATH = os.getenv("DB_PATH", "analytics.db")
+DB_FILE = PROJECT_ROOT / DB_PATH
 CONSOLIDADO_TABLE = "consolidado"
 
 OUT_DIR = Path("data")
