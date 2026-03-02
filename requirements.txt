@@ -11,3 +11,4 @@ scikit-learn
 metaphone 
 sentence-transformers 
 faiss-cpu
+matplotlib
