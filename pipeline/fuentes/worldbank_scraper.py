@@ -1,3 +1,18 @@
+""" pipeline/fuentes/worldbank_scraper.py
+
+Scraper WorldBank Debarred (HTML).
+
+Este extractor es deliberadamente "resiliente" porque:
+- El sitio puede cambiar paginación / cargar tablas con JS
+- No contamos con Selenium/JS rendering en la prueba
+
+Estrategia:
+- Probar varios query params típicos (?page=, ?p=, ?start=)
+- Detectar "página repetida" comparando hash del HTML
+- Dedupe incremental persistiendo IDs vistos en state_seen_ids.txt
+
+"""
+
 import os
 import time
 import hashlib
@@ -29,6 +44,7 @@ def build_session():
 
 
 def sha256(text: str) -> str:
+    """Retorna codigo sha256 de una cadena str"""
     return hashlib.sha256(text.encode("utf-8", errors="ignore")).hexdigest()
 
 

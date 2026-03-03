@@ -1,3 +1,23 @@
+"""pipeline/run_pipeline.py
+
+Orquestador principal del pipeline de ingesta.
+
+Este script ejecuta, en orden:
+1) Inicialización de directorios y base de datos (todas las tablas via schema.py)
+2) Registro de la ejecución (ingestion_runs)
+3) Extracción por fuente (descarga/obtención del "raw")
+4) Transformación a esquema canónico + Quality Checks + carga a staging (por run_id)
+5) Merge final staging -> consolidado (tabla productiva)
+6) Generación de reporte JSON en disco (auditoría / evidencia)
+7) Monitoreo post-run (métricas + alertas) usando el JSON + DB
+
+Diseño:
+- Cada fuente reporta: status, paths y conteos en `by_source`.
+- `errors` acumula excepciones por fuente y etapa.
+- En caso de fallas parciales se usa status `SUCCESS_WITH_ERRORS`.
+- El monitoreo NO rompe el pipeline (se considera "non-blocking" para la prueba).
+"""
+
 import os
 import time
 import uuid
@@ -23,14 +43,17 @@ from pipeline.carga.sqlite_merge import merge_staging_to_consolidado
 from pipeline.calidad.quality import validations
 from pipeline.monitoring.monitor import run_monitoring
 
+# Cargar variables desde .env (local dev)
 load_dotenv()
 
 # Variables de entorno
 ENV = os.getenv("ENV", "local")
 DB_PATH = os.getenv("DB_PATH", "analytics.db")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-UN_XML_URL = os.getenv("UN_XML_URL", "").strip()
 
+# Nivel de logs: DEBUG/INFO/WARNING/ERROR
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
+# Paths del proyecto
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"
 REPORTS_DIR = PROJECT_ROOT / "reportes"
@@ -38,13 +61,16 @@ DB_FILE = PROJECT_ROOT / DB_PATH
 
 # Función para crear id de pipeline
 def make_run_id():
+    """Genera un identificador único y ordenable por tiempo para la ejecución."""
     return time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
 
 # Función para creación del logger
 def setup_logger():
+    """Crea un logger de consola sencillo, con formato consistente."""
     logger = logging.getLogger("pipeline")
     logger.setLevel(getattr(logging, LOG_LEVEL, logging.INFO))
-
+    
+    # Evitar duplicar handlers si se reimporta el módulo
     if not logger.handlers:
         ch = logging.StreamHandler()
         fmt = logging.Formatter("[%(asctime)s] %(levelname)s - %(message)s")
@@ -55,22 +81,18 @@ def setup_logger():
 
 # Función para verificar las existincia de las carpetas de reportes
 def ensure_dirs():
+    """Crea carpetas base del proyecto si no existen."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Función para inicialización y creación de tabla de ejecucción
 def init_db(conn):
-    ddl = """
-    CREATE TABLE IF NOT EXISTS ingestion_runs (
-        run_id TEXT PRIMARY KEY,
-        env TEXT NOT NULL,
-        started_at TEXT NOT NULL,
-        finished_at TEXT,
-        status TEXT NOT NULL,
-        notes TEXT
-    );
+    """Inicializa la DB creando TODAS las tablas.
+
+    Importante:
+    - La fuente de verdad del DDL es schema.py (init_all_tables).
+    - Evitamos repetir CREATE TABLE aquí para mantener consistencia.
     """
-    conn.executescript(ddl)
     init_all_tables(conn)
     conn.commit()
 
@@ -91,7 +113,11 @@ def run_quality(df, source_key: str, by_source: dict, errors: dict, hard_fail: b
     return issues
 
 def _merge_durations(durations: dict, inc: dict):
-    """Suma durations parciales dentro del dict global."""
+    """Acumula (suma) métricas de tiempo por etapa.
+
+    Esto permite que extractores/transformadores reporten sus timings individuales
+    y el pipeline tenga un resumen total por run.
+    """
     for k, v in (inc or {}).items():
         durations[k] = round(durations.get(k, 0) + float(v), 4)
 
@@ -120,11 +146,17 @@ def _run_transform_quality_load(
     # política QC
     qc_hard_fail: bool = True,
 ) -> None:
-    """
-    Pipeline genérico para una fuente:
-      - transform -> df (+ meta opcional)
-      - quality -> si falla: NO carga y sigue
-      - load_to_staging(df)
+    """Ejecuta el bloque estándar: Transform -> Quality -> Load (staging).
+
+    Parámetros clave:
+    - raw_path_value: string que viene del extractor (path del archivo RAW).
+    - transform_fn: función que convierte RAW a DF canónico.
+    - transform_returns_meta: si la función retorna (df, meta) o solo df.
+    - qc_hard_fail: si True, cualquier ERROR de quality evita cargar a staging.
+
+    Efectos:
+    - Actualiza `by_source[source_key]` con conteos, calidad, meta, etc.
+    - Escribe errores en `errors[source_key]` con etapa y mensaje.
     """
 
     # Si no hay path, skip
@@ -135,7 +167,7 @@ def _run_transform_quality_load(
     try:
         raw_path = Path(raw_path_value)
 
-        # 1) Transformación
+        # 1. Transformación
         t_tf = time.time()
         if transform_returns_meta:
             df, meta = transform_fn(raw_path)
@@ -144,7 +176,7 @@ def _run_transform_quality_load(
             meta = {}
         durations[dur_tf_key] = round(time.time() - t_tf, 4)
 
-        # 2) Quality (si falla, no cargamos y seguimos)
+        # 2. Quality (si falla, no cargamos y seguimos)
         try:
             issues = validations(df, hard_fail=qc_hard_fail)
 
@@ -153,7 +185,7 @@ def _run_transform_quality_load(
             by_source[source_key]["quality_error_count"] = sum(1 for i in issues if i.get("level") == "ERROR")
             by_source[source_key]["quality_warn_count"] = sum(1 for i in issues if i.get("level") == "WARN")
 
-            # (opcional) guarda issues completos (pueden ser grandes)
+            # Guardar issues completos
             by_source[source_key]["quality_issues"] = issues
 
         except Exception as qe:
@@ -163,12 +195,12 @@ def _run_transform_quality_load(
             by_source[source_key].update(meta)
             return
 
-        # 3) Carga a staging (ahora tu load_to_staging acepta df)
+        # 3. Carga a staging
         t_ld = time.time()
         n_stg = load_to_staging(conn, run_id=run_id, records=df)
         durations[dur_ld_key] = round(time.time() - t_ld, 4)
 
-        # 4) Reporte por fuente
+        # 4. Reporte por fuente
         by_source.setdefault(source_key, {})
         by_source[source_key]["transform_status"] = "OK"
         by_source[source_key]["staging_records"] = n_stg
@@ -176,6 +208,7 @@ def _run_transform_quality_load(
         by_source[source_key].update(meta)
 
     except Exception as e:
+        # Cualquier excepción aquí es transform o load inesperado
         logger.exception(f"{source_key} transform/load failed")
         errors.setdefault(source_key, []).append({"stage": "transform_load_staging", "error": str(e)})
         by_source.setdefault(source_key, {})["transform_status"] = "FAILED"
@@ -185,17 +218,23 @@ def main():
     logger = setup_logger()
     ensure_dirs()
 
+    # Identificadores de auditoría
     run_id = make_run_id()
     started_at = time.strftime("%Y-%m-%d %H:%M:%S")
     run_date = time.strftime("%Y%m%d")
     logger.info(f"Starting run_id={run_id} env={ENV}")
-
+    
+    # Estado global del run (se consolida al final)
     status = "SUCCESS"
     notes = None
+
+    # Estructuras que terminan en el reporte JSON
     durations = {}
     by_source = {}
     errors = {}
     finished_at = None
+
+    # Abrimos conexión a SQLite para staging/merge/control
     conn = sqlite3.connect(DB_FILE)
 
     try:
@@ -225,15 +264,18 @@ def main():
 
         for source_key, extractor in extract_jobs:
             try:
+                # extractor retorna: (info, durs, errs)
                 info, durs, errs = extractor(DATA_DIR, logger)
                 by_source[source_key] = info
                 _merge_durations(durations, durs)
 
                 if errs:
+                    # Errores no necesariamente rompen el run, pero lo marcan con warnings
                     errors[source_key] = errs
                     status = "SUCCESS_WITH_ERRORS"
 
             except Exception as e:
+                # Fallo inesperado del extractor
                 logger.exception(f"{source_key} extract failed")
                 by_source[source_key] = {"status": "FAILED"}
                 errors[source_key] = [{"stage": "extract", "error": str(e)}]
@@ -267,7 +309,7 @@ def main():
                 "source_key": "PACO_FGN",
                 "path_key": "raw_csv_path",
                 "transform_fn": transform_paco_fgn,
-                "transform_returns_meta": False,  # en tu versión actual retorna solo df
+                "transform_returns_meta": False,
                 "dur_tf_key": "paco_fgn_transform_sec",
                 "dur_ld_key": "paco_fgn_load_staging_sec",
             },
@@ -284,7 +326,7 @@ def main():
         for job in transform_jobs:
             source_key = job["source_key"]
 
-            # Solo corre si la extracción quedó OK
+            # Política: solo transformamos si extraction quedó OK
             if by_source.get(source_key, {}).get("status") != "OK":
                 by_source.setdefault(source_key, {})["transform_status"] = "SKIPPED"
                 continue
@@ -318,24 +360,32 @@ def main():
             durations["merge_final_sec"] = round(time.time() - t_mg, 4)
             logger.info(f"Final merge OK for run_id={run_id}")
         except Exception as e:
+            # Si el merge falla, la ejecución se considera FAILED
             logger.exception("Final merge failed")
             status = "FAILED"
             notes = f"Final merge failed: {str(e)}"
 
     except Exception as e:
+        # Fallo global no capturado por secciones anteriores
         status = "FAILED"
         notes = str(e)
         logger.exception("Pipeline failed")
 
     finally:
-        finished_at = time.strftime("%Y-%m-%d %H:%M:%S")
-        conn.execute(
-            "UPDATE ingestion_runs SET finished_at=?, status=?, notes=? WHERE run_id=?",
-            (finished_at, status, notes, run_id)
-        )
-        conn.commit()
-        conn.close()
+        # 5. Cierre de ejecución: actualizar ingestion_runs
+        try:
+            conn.execute(
+                "UPDATE ingestion_runs SET finished_at=?, status=?, notes=? WHERE run_id=?",
+                (finished_at, status, notes, run_id),
+            )
+            conn.commit()
+        except Exception as e:
+            # Si esto falla, lo reportamos pero intentamos cerrar igual
+            logger.exception(f"Could not update ingestion_runs in finally: {e}")
+        finally:
+            conn.close()
 
+    # 6. Reporte JSON (auditoría) - se escribe en disco
     report = {
         "run_id": run_id,
         "env": ENV,
@@ -351,7 +401,7 @@ def main():
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     logger.info(f"Report written: {report_path}")
     
-    # Monitoring (métricas + alertas + linaje)
+    # 7. Monitoring (métricas + alertas + linaje)
     try:
         mon = run_monitoring(db_path=str(DB_FILE), report_path=str(report_path), logger=logger, channel="console")
         logger.info(f"Monitoring done: {mon}")

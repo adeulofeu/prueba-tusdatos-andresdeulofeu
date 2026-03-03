@@ -1,3 +1,15 @@
+""" pipeline/normalizacion/sdn_ofac_transform.py
+
+Transformación OFAC SDN enhanced XML -> DataFrame canónico.
+
+- Parser streaming de entidad y reference values
+- Normaliza nombres y aliases
+- Construye tipo_sujeto por entityType
+- Calcula hash_contenido e id_registro estables
+- Retorna (df, meta)
+
+"""
+
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from datetime import datetime
@@ -57,7 +69,7 @@ def _parse_ofac_xml_to_rows(raw_xml_path: Path) -> Iterator[Dict[str, Any]]:
     for event, elem in ctx:
         tag = _strip_ns(elem.tag)
 
-        # A) referenceValue(refId) -> value
+        # referenceValue(refId) -> value
         if event == "end" and tag == "referenceValue":
             ref_id = elem.attrib.get("refId")
             val = elem.findtext("ofac:value", default=None, namespaces=ns) if ns else elem.findtext("value")
@@ -67,7 +79,7 @@ def _parse_ofac_xml_to_rows(raw_xml_path: Path) -> Iterator[Dict[str, Any]]:
             elem.clear()
             continue
 
-        # B) entity -> construir row
+        # entity -> construir row
         if event == "end" and tag == "entity":
 
             # entity_type, identity_id
@@ -162,25 +174,25 @@ def transform_ofac_sdn(raw_xml_path: Path, fecha_ingesta_iso: str | None = None)
     if fecha_ingesta_iso is None:
         fecha_ingesta_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
-    # 1) XML -> rows (dicts intermedios) -> lista (materializamos)
+    # 1. XML -> rows (dicts intermedios) -> lista (materializamos)
     rows = list(_parse_ofac_xml_to_rows(raw_xml_path))
     if not rows:
         raise ValueError("No se pudieron extraer entidades válidas desde OFAC (0 rows).")
 
     df_rows = pd.DataFrame(rows)
 
-    # 2) Determinar tipo_sujeto según entity_type
+    # 2. Determinar tipo_sujeto según entity_type
     entity_type = df_rows["entity_type"].fillna("").astype(str).str.strip().str.lower()
     tipo_sujeto = entity_type.map(lambda x: "PERSONA_NATURAL" if x == "individual" else "PERSONA_JURIDICA")
 
-    # 3) nombres y apellidos
+    # 3. nombres y apellidos
     nombres = df_rows["primary_full"].map(norm_text) if "primary_full" in df_rows.columns else pd.Series([None] * len(df_rows))
     primary_last = df_rows["primary_last"].map(norm_text) if "primary_last" in df_rows.columns else pd.Series([None] * len(df_rows))
 
     # Solo persona natural lleva apellidos (como en tu lógica original)
     apellidos = primary_last.where(tipo_sujeto == "PERSONA_NATURAL", None)
 
-    # 4) tipo_sancion a partir de lists/programs/sanction_types
+    # 4. tipo_sancion a partir de lists/programs/sanction_types
     def build_tipo_sancion_row(r: pd.Series) -> str | None:
         lists = r.get("lists") if isinstance(r.get("lists"), list) else []
         programs = r.get("programs") if isinstance(r.get("programs"), list) else []
@@ -198,10 +210,10 @@ def transform_ofac_sdn(raw_xml_path: Path, fecha_ingesta_iso: str | None = None)
 
     tipo_sancion = df_rows.apply(build_tipo_sancion_row, axis=1)
 
-    # 5) fecha_sancion (date_published parseado)
+    # 5. fecha_sancion (date_published parseado)
     fecha_sancion = df_rows["date_published"].map(parse_date_iso) if "date_published" in df_rows.columns else pd.Series([None] * len(df_rows))
 
-    # 6) aliases y origen_id
+    # 6. aliases y origen_id
     # aliases: aseguramos lista siempre
     def safe_list(x):
         return x if isinstance(x, list) else []
@@ -209,7 +221,7 @@ def transform_ofac_sdn(raw_xml_path: Path, fecha_ingesta_iso: str | None = None)
     aliases = df_rows["aliases"].map(safe_list) if "aliases" in df_rows.columns else pd.Series([[] for _ in range(len(df_rows))])
     origen_id = df_rows["identity_id"].map(norm_text) if "identity_id" in df_rows.columns else pd.Series([None] * len(df_rows))
 
-    # 7) Armar DF canónico (sin hash todavía)
+    # 7. Armar DF canónico (sin hash todavía)
     df = pd.DataFrame({
         "id_registro": None,
         "fuente": "OFAC",
@@ -229,7 +241,7 @@ def transform_ofac_sdn(raw_xml_path: Path, fecha_ingesta_iso: str | None = None)
         "hash_contenido": None,
     })
 
-    # 8) Hash estable (sin fecha_ingesta, id_registro, hash_contenido)
+    # 8. Hash estable (sin fecha_ingesta, id_registro, hash_contenido)
     def row_hash(row: pd.Series) -> str:
         d = row.to_dict()
         d.pop("fecha_ingesta", None)
@@ -240,7 +252,7 @@ def transform_ofac_sdn(raw_xml_path: Path, fecha_ingesta_iso: str | None = None)
     df["hash_contenido"] = df.apply(row_hash, axis=1)
     df["id_registro"] = df["hash_contenido"].map(lambda h: make_id_registro("OFAC", h))
 
-    # 9) Orden final
+    # 9. Orden final
     df = df[CANON_COLS]
 
     meta = {

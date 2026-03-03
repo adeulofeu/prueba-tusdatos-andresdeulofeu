@@ -1,3 +1,12 @@
+""" pipeline/fuentes/ofac_sdn_xml.py
+
+Extractor OFAC SDN (XML enhanced).
+
+- Descarga el XML a data/raw/ofac_sdn/YYYYMMDD/SDN_ENHANCED.xml
+- Retorna (by_source, durations, errors)
+
+"""
+
 import os
 import time
 from pathlib import Path
@@ -39,7 +48,7 @@ def extract_ofac_sdn(data_dir: Path, logger):
     raw_dir = data_dir / "raw" / "ofac_sdn" / yyyymmdd
     xml_path = raw_dir / "SDN_ENHANCED.xml"
 
-    # Aquí puedes parametrizarlo por env vars después si quieres
+    # Se crea el cliente HTTPS a traves de la clase auxiliar en utils.py
     client = HTTPClient(logger)
 
     try:

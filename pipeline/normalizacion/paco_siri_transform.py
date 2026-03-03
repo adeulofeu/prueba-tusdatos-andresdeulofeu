@@ -1,3 +1,14 @@
+""" pipeline/normalizacion/paco_siri_transform.py
+
+Transformación PACO SIRI TXT -> DataFrame canónico.
+
+- Lectura robusta del TXT: prueba utf-8 y latin-1
+- Descarta filas malformadas (número de columnas != esperado)
+- Normaliza texto y parsea fecha_acto a fecha_sancion (ISO)
+- Calcula hash_contenido e id_registro
+- Retorna (df, meta)
+
+"""
 import time
 import csv
 from pathlib import Path
@@ -48,9 +59,9 @@ COLS = [
 def safe_join(parts):
     """
     Une varias piezas de texto en un solo string:
-    1) Normaliza cada parte con norm_text
-    2) Filtra vacíos
-    3) Une con espacios
+    1. Normaliza cada parte con norm_text
+    2. Filtra vacíos
+    3. Une con espacios
     """
     parts = [norm_text(p) for p in parts]
     parts = [p for p in parts if p]
@@ -96,15 +107,15 @@ def transform_paco_siri(raw_txt_path: Path, fecha_ingesta_iso: str | None = None
     if fecha_ingesta_iso is None:
         fecha_ingesta_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    # 1) Leer el TXT de forma robusta (encoding + filas malformadas)
+    # 1. Leer el TXT de forma robusta (encoding + filas malformadas)
     rows, enc_used, bad_rows = _read_paco_siri_robust(raw_txt_path, expected_cols=len(COLS))
     if not rows:
         raise ValueError("No se pudieron leer registros válidos (0 filas parseadas).")
 
-    # 2) Rows -> DataFrame raw
+    # 2. Rows -> DataFrame raw
     df_raw = pd.DataFrame(rows, columns=COLS)
 
-    # 3) Normalizar columnas de texto relevantes
+    # 3. Normalizar columnas de texto relevantes
     for c in [
         "tipo_doc", "apellido_1", "apellido_2", "nombre_1", "nombre_2", "cargo",
         "departamento", "municipio", "sancion", "instancia", "autoridad", "entidad",
@@ -113,10 +124,10 @@ def transform_paco_siri(raw_txt_path: Path, fecha_ingesta_iso: str | None = None
         if c in df_raw.columns:
             df_raw[c] = df_raw[c].map(norm_text)
 
-    # 4) Derivar fecha_sancion desde fecha_acto
+    # 4. Derivar fecha_sancion desde fecha_acto
     df_raw["fecha_sancion"] = df_raw["fecha_acto"].map(parse_date_iso)
 
-    # 5) Construcción canónica en DataFrame (sin iterrows)
+    # 5. Construcción canónica en DataFrame (sin iterrows)
     #    - nombres: nombre_1 + nombre_2
     #    - apellidos: apellido_1 + apellido_2
     nombres = df_raw.apply(lambda r: safe_join([r.get("nombre_1"), r.get("nombre_2")]), axis=1)
@@ -150,7 +161,7 @@ def transform_paco_siri(raw_txt_path: Path, fecha_ingesta_iso: str | None = None
     numero_documento = df_raw["num_doc"].map(norm_text) if "num_doc" in df_raw.columns else pd.Series([None] * len(df_raw))
     origen_id = df_raw["id_fuente"].map(norm_text) if "id_fuente" in df_raw.columns else pd.Series([None] * len(df_raw))
 
-    # 6) Armar DF canónico (sin hash aún)
+    # 6. Armar DF canónico (sin hash aún)
     df = pd.DataFrame({
         "id_registro": None,
         "fuente": "PACO_SIRI",
@@ -170,7 +181,7 @@ def transform_paco_siri(raw_txt_path: Path, fecha_ingesta_iso: str | None = None
         "hash_contenido": None,
     })
 
-    # 7) Hash estable (sin fecha_ingesta, id_registro, hash_contenido)
+    # 7. Hash estable (sin fecha_ingesta, id_registro, hash_contenido)
     def row_hash(row: pd.Series) -> str:
         d = row.to_dict()
         d.pop("fecha_ingesta", None)
@@ -181,10 +192,10 @@ def transform_paco_siri(raw_txt_path: Path, fecha_ingesta_iso: str | None = None
     df["hash_contenido"] = df.apply(row_hash, axis=1)
     df["id_registro"] = df["hash_contenido"].map(lambda h: make_id_registro("PACO_SIRI", h))
 
-    # 8) Garantizar columnas finales y orden
+    # 8. Garantizar columnas finales y orden
     df = df[CANON_COLS]
 
-    # 9) Meta de auditoría
+    # 9. Meta de auditoría
     meta = {
         "encoding_used": enc_used,
         "bad_rows_skipped": bad_rows,

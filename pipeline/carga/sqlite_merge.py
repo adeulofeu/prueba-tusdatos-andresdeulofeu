@@ -1,5 +1,25 @@
-import sqlite3
+"""pipeline/carga/sqlite_merge.py
 
+Merge final: staging_consolidado -> consolidado (productiva).
+
+Idea:
+- staging_consolidado tiene data canónica de un run específico.
+- consolidado mantiene historial ligero:
+    - hash_anterior: hash previo cuando cambia un registro
+    - first_seen_at / last_seen_at / updated_at: auditoría temporal
+
+Estrategia (SQLite-friendly):
+1) Insertar nuevos id_registro que no existan en consolidado.
+2) Para id_registro existentes:
+   - si hash_contenido cambió => actualizar columnas y mover hash a hash_anterior
+   - siempre actualizar last_seen_at (visto en este run)
+
+Esto te da:
+- Upsert determinístico (por id_registro)
+- Detección de cambios (por hash_contenido)
+"""
+
+import sqlite3
 
 def merge_staging_to_consolidado(conn: sqlite3.Connection, run_id: str) -> None:
     """
@@ -12,7 +32,7 @@ def merge_staging_to_consolidado(conn: sqlite3.Connection, run_id: str) -> None:
     4) UPDATE SOLO registros cuyo hash cambió (copia columnas desde staging)
     """
 
-    # 0) Validar si hay datos en staging para este run
+    # 0. Validar si hay datos en staging para este run
     cur = conn.execute(
         "SELECT 1 FROM staging_consolidado WHERE run_id = ? LIMIT 1;",
         (run_id,),
@@ -20,7 +40,8 @@ def merge_staging_to_consolidado(conn: sqlite3.Connection, run_id: str) -> None:
     if cur.fetchone() is None:
         return
 
-    # 1) INSERT nuevos registros
+    # 1. INSERT nuevos registros
+    sql_insert_new =
     conn.execute(
         """
         INSERT INTO consolidado (
@@ -43,7 +64,7 @@ def merge_staging_to_consolidado(conn: sqlite3.Connection, run_id: str) -> None:
         (run_id,),
     )
 
-    # 2) UPDATE básico: siempre actualizar last_seen_at + fecha_ingesta
+    # 2. UPDATE básico: siempre actualizar last_seen_at + fecha_ingesta
     conn.execute(
         """
         WITH s AS (
@@ -60,7 +81,7 @@ def merge_staging_to_consolidado(conn: sqlite3.Connection, run_id: str) -> None:
         (run_id,),
     )
 
-    # 3) UPDATE SOLO cuando hash cambió (copiar columnas desde staging)
+    # 3. UPDATE SOLO cuando hash cambió (copiar columnas desde staging)
     #    Ventaja: solo 1 binding (run_id) y el resto lo resuelve el CTE.
     conn.execute(
         """

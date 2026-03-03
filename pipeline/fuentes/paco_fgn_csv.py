@@ -1,3 +1,15 @@
+""" pipeline/fuentes/paco_fgn_csv.py
+
+Extractor PACO FGN (CSV).
+
+- Descarga el CSV a disco (streaming)
+- Retorna (by_source, durations, errors)
+
+Nota:
+- Se mantiene simple porque el valor del ejercicio está en la normalización + QC.
+
+"""
+
 import os
 import time
 from pathlib import Path
@@ -39,6 +51,7 @@ def extract_paco_fgn(data_dir: Path, logger):
     raw_dir = data_dir / "raw" / "paco_fgn" / yyyymmdd
     csv_path = raw_dir / "sanciones_penales_FGN.csv"
 
+    # Creación del cliente HTTPS a traves de clase creada en utils.py
     client = HTTPClient(logger)
 
     try:

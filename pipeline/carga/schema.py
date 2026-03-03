@@ -1,3 +1,20 @@
+"""pipeline/carga/schema.py
+
+DDL (Data Definition Language) de SQLite para el proyecto.
+
+Este módulo centraliza la creación de TODAS las tablas:
+- consolidado: tabla productiva final (histórica) con control de cambios.
+- staging_consolidado: staging por run_id (carga temporal).
+- ingestion_runs: control plane (estado de ejecución del pipeline).
+- ingestion_run_metrics: métricas por (run_id, fuente) para monitoreo.
+- alerts: registro de alertas generadas por el monitor.
+
+Por qué centralizarlo:
+- Evita que run_pipeline u otros módulos repitan CREATE TABLE.
+- Facilita versionamiento y revisión del esquema.
+- Permite que "init_all_tables(conn)" sea el único punto de inicialización.
+"""
+
 def init_all_tables(conn):
     ddl = """
     -- PRODUCTIVA
@@ -108,6 +125,15 @@ def init_all_tables(conn):
 
     CREATE INDEX IF NOT EXISTS idx_alerts_run ON alerts(run_id);
     CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts(alert_type);
+    
+    CREATE TABLE IF NOT EXISTS ingestion_runs (
+        run_id TEXT PRIMARY KEY,
+        env TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        status TEXT NOT NULL,
+        notes TEXT
+    );
     """
     conn.executescript(ddl)
     conn.commit()

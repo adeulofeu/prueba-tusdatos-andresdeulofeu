@@ -1,3 +1,18 @@
+""" pipeline/fuentes/paco_siri_zip.py
+
+Extractor de PACO SIRI.
+
+Funciones principales:
+- download_raw_zip: descarga el ZIP en modo streaming (chunked) para evitar RAM.
+- extract_txt_from_zip: extrae el .txt (o el primer archivo) también en streaming.
+- extract_paco_siri: orquesta y retorna (by_source, durations, errors).
+
+Puntos clave:
+- Usa HTTPClient con reintentos/backoff (ver utils.py).
+- Valida que el ZIP y el archivo extraído no estén vacíos.
+
+"""
+
 import os
 import time
 import zipfile
@@ -74,7 +89,8 @@ def extract_paco_siri(data_dir: Path, logger):
     raw_dir = data_dir / "raw" / "paco_siri" / yyyymmdd
     zip_path = raw_dir / "antecedentes_SIRI_sanciones_Cleaned.zip"
     extract_dir = raw_dir / "extracted"
-
+    
+    # Creación de cliente HTTPS a traves de la clase en utils.py
     client = HTTPClient(logger)
 
     try:

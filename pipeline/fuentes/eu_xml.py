@@ -1,3 +1,12 @@
+""" pipeline/fuentes/eu_xml.py
+
+Extractor de la lista EU (XML).
+
+- Descarga el XML a data/raw/eu/YYYYMMDD/eu_sanctions.xml
+- Realiza un parse mínimo de conteos (heurístico) para auditoría.
+- Retorna (by_source, durations, errors)
+
+"""
 import os
 import time
 import xml.etree.ElementTree as ET
@@ -67,7 +76,7 @@ def extract_eu(data_dir: Path, logger):
     client = HTTPClient(logger)
 
     try:
-        # Download
+        # Descarga
         t_dl = time.time()
         _download_raw(client, eu_url, raw_path, logger)
         durations["download_sec"] = round(time.time() - t_dl, 4)
@@ -88,7 +97,7 @@ def extract_eu(data_dir: Path, logger):
     except Exception as e:
         msg = str(e)
 
-        # Si EU da 403, no lo escondas: esto demuestra criterio
+        # Si marca si existe un error al momento de la descarga en el log
         logger.error(f"[EU] Extract failed: {msg}")
         errors.append({"stage": "extract", "error": msg})
         return {"status": "FAILED"}, durations, errors

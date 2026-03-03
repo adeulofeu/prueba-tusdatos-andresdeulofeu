@@ -1,3 +1,20 @@
+"""pipeline/carga/sqlite_staging.py
+
+Carga de DataFrames/records al staging de SQLite.
+
+Responsabilidades:
+- Recibir registros canónicos (dicts o DataFrame)
+- Normalizar types problemáticos (NaN, Timestamp)
+- Asegurar que aliases/nacionalidad sean listas en memoria
+- Serializar listas a JSON TEXT para SQLite
+- Insertar por lotes (executemany) con INSERT OR REPLACE
+
+Notas:
+- staging_consolidado tiene PK(run_id, id_registro). Usamos OR REPLACE para permitir:
+  - re-ejecución idempotente dentro del mismo run (si se repite carga).
+- `clear_staging_for_run` borra staging de un run_id (por seguridad).
+"""
+
 import json
 import math
 import sqlite3
@@ -7,7 +24,7 @@ import pandas as pd
 
 
 def _is_nan(v: Any) -> bool:
-    # NaN (pandas) -> True
+    """Detecta NaN (principalmente de pandas)."""
     if isinstance(v, float):
         try:
             return math.isnan(v)
@@ -17,23 +34,29 @@ def _is_nan(v: Any) -> bool:
 
 
 def _clean(v: Any):
-    # NaN (pandas) -> None
+    """Normaliza valores para SQLite:
+    - NaN -> None
+    - Timestamp -> ISO string
+    - otros -> sin cambios
+    """
     if _is_nan(v):
         return None
-    # pandas Timestamp -> isoformat
     if isinstance(v, pd.Timestamp):
         return v.to_pydatetime().isoformat()
     return v
 
 
 def _ensure_list(x: Any):
-    """
-    En memoria, aliases/nacionalidad deben ser list.
+    """Asegura que aliases/nacionalidad sean listas en memoria.
+
     Acepta:
       - list -> ok
       - None/NaN -> []
-      - str JSON de lista -> parsea y devuelve list (si se puede)
-      - cualquier otro -> [] (y lo deja para QC si quieres endurecer)
+      - str JSON de lista -> intenta parsear
+    Si no se puede, retorna [].
+
+    Importante:
+    - Esto evita que la misma fila tenga hash diferente por cambios de representación.
     """
     if x is None or _is_nan(x):
         return []
@@ -53,22 +76,31 @@ def _ensure_list(x: Any):
 
 
 def _json_text(x):
+    """Serializa una lista a JSON para persistirla en TEXT."""
     if x is None:
         return None
     return json.dumps(x, ensure_ascii=False)
 
 
 def clear_staging_for_run(conn: sqlite3.Connection, run_id: str):
+    """Borra staging de un run_id (útil antes de recargar)."""
     conn.execute("DELETE FROM staging_consolidado WHERE run_id = ?", (run_id,))
     conn.commit()
 
 
 def _iter_records_from_df(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
+    """Convierte un DF canónico a records dict limpios.
+
+    Pasos:
+    1) Copia DF para no mutar el original
+    2) Normaliza aliases/nacionalidad a listas si existen
+    3) Normaliza activo a bool (y luego a 0/1 al persistir)
+    4) Reemplaza NaN -> None (en todo el DF)
+    5) Itera dict records, limpiando valores finales
+
+    Motivo:
+    - pandas usa NaN y tipos numpy que SQLite no maneja bien.
     """
-    Convierte un DF canónico a records dict limpios (NaN->None),
-    asegurando que aliases/nacionalidad sean listas.
-    """
-    # convertimos a objetos python para evitar tipos numpy raros
     df2 = df.copy()
 
     # Normalizar columnas list-like (si existen)
@@ -77,7 +109,7 @@ def _iter_records_from_df(df: pd.DataFrame) -> Iterable[Dict[str, Any]]:
     if "nacionalidad" in df2.columns:
         df2["nacionalidad"] = df2["nacionalidad"].map(_ensure_list)
 
-    # activo debe ser bool (si viene NaN o None -> False)
+    # Activo debe ser bool (si viene NaN o None -> False)
     if "activo" in df2.columns:
         df2["activo"] = df2["activo"].map(lambda x: bool(x) if x is not None and not _is_nan(x) else False)
 
@@ -100,10 +132,6 @@ def load_to_staging(
 ) -> int:
     """
     Inserta registros en staging_consolidado.
-
-    Ahora soporta:
-      - records: Iterable[Dict] (modo anterior)
-      - records: pd.DataFrame canónico (modo nuevo)
     """
     sql = """
     INSERT OR REPLACE INTO staging_consolidado (
@@ -128,11 +156,13 @@ def load_to_staging(
         # Limpieza ligera (por compatibilidad)
         r = {k: _clean(v) for k, v in r.items()}
 
+        # Validaciones mínimas de esquema: id_registro y hash son obligatorios
         rid = r.get("id_registro")
         h = r.get("hash_contenido")
         if not rid or not h:
             raise ValueError("Record must include id_registro and hash_contenido")
 
+        # Serializamos listas a JSON TEXT
         aliases_list = _ensure_list(r.get("aliases"))
         nac_list = _ensure_list(r.get("nacionalidad"))
 
@@ -156,12 +186,14 @@ def load_to_staging(
             h
         ))
 
+        # Flush por lotes (evita un executemany gigante)
         if len(batch) >= batch_size:
             cur.executemany(sql, batch)
             conn.commit()
             total += len(batch)
             batch.clear()
 
+    # Insert final si quedó algo
     if batch:
         cur.executemany(sql, batch)
         conn.commit()

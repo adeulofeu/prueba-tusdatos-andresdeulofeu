@@ -1,3 +1,25 @@
+"""pipeline/calidad/quality.py
+
+Reglas de Data Quality para DataFrames en esquema CANÓNICO.
+
+Estas reglas corren *después* de transformar cada fuente a un DataFrame uniforme y
+*antes* de cargar a staging. La idea es detectar:
+- Errores de contrato (faltan columnas, tipos incorrectos)
+- Errores de integridad (fuente vacía, hash inconsistente por origen)
+- Errores temporales (fechas futuras)
+
+Convenciones:
+- Cada regla retorna una lista de "Issue" dicts:
+    {level, rule, message, sample}
+- level esperado: "ERROR" o "WARN"
+- Si validations(..., hard_fail=True) encuentra al menos un ERROR, levanta ValueError
+  con un resumen, para cortar la carga de esa fuente.
+
+Nota importante:
+- Estas reglas NO intentan "arreglar" datos; solo validan.
+  La normalización/corrección debe ocurrir en los transformadores.
+"""
+
 import json
 from datetime import date, datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -7,7 +29,7 @@ import pandas as pd
 Issue = Dict[str, Any]
 Rule = Callable[[pd.DataFrame], List[Issue]]
 
-
+# Esquema canónico: todas las fuentes deben llegar con estas columnas.
 CANON_COLS = [
     "id_registro",
     "fuente",
@@ -29,6 +51,7 @@ CANON_COLS = [
 
 
 def _issue(level: str, rule: str, message: str, sample: Optional[Dict[str, Any]] = None) -> Issue:
+    """Helper para construir un Issue con estructura consistente."""
     return {"level": level, "rule": rule, "message": message, "sample": sample or {}}
 
 
@@ -38,10 +61,7 @@ def _is_blank_scalar(x: Any) -> bool:
 
 
 def _first_bad_row(df: pd.DataFrame, mask: pd.Series, cols: List[str]) -> Dict[str, Any]:
-    """
-    Toma la primera fila donde mask=True y devuelve un sample dict con las columnas pedidas.
-    Si no hay filas, retorna {}.
-    """
+    """Devuelve un sample con la primera fila que rompe una regla."""
     bad = df.loc[mask, cols]
     if bad.empty:
         return {}
@@ -71,11 +91,7 @@ def _parse_date_to_pydate(value: Any) -> Optional[date]:
             return None
     return None
 
-
-# -------------------------
 # Reglas de calidad (DF)
-# -------------------------
-
 def q_non_empty(df: pd.DataFrame) -> List[Issue]:
     """La fuente no puede quedar con 0 registros post-transform."""
     if df is None or len(df) == 0:
@@ -97,9 +113,10 @@ def q_fuente_not_null(df: pd.DataFrame) -> List[Issue]:
 
 
 def q_required_columns_present(df: pd.DataFrame, required: List[str] = CANON_COLS) -> List[Issue]:
-    """
-    Garantiza que el DF cumple el contrato de columnas canónicas.
-    Esto NO es “data quality” de negocio, pero te salva de bugs silenciosos.
+    """Garantiza que el DF cumple con el esquema canónicas.
+
+    Esto no es “quality de negocio”, pero previene bugs silenciosos
+    (por ejemplo: la carga a staging no insertaría columnas faltantes).
     """
     missing = [c for c in required if c not in df.columns]
     if missing:
@@ -217,11 +234,7 @@ def q_hash_unique_by_fuente_origen(df: pd.DataFrame) -> List[Issue]:
                        sample)]
     return []
 
-
-# -------------------------
 # Runner
-# -------------------------
-
 DEFAULT_RULES: List[Rule] = [
     q_non_empty,
     q_required_columns_present,

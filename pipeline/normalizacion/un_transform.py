@@ -1,3 +1,15 @@
+""" pipeline/normalizacion/un_transform.py
+
+Transformación UN consolidated.xml -> DataFrame canónico.
+
+- Parse streaming con iterparse para no cargar todo el XML en memoria
+- Construye filas canónicas (list/dict) y luego materializa DataFrame
+- Calcula hash_contenido estable (excluyendo fecha_ingesta)
+- Deriva id_registro = make_id_registro(fuente, hash_contenido)
+- Retorna (df, meta)
+
+"""
+
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from datetime import datetime
@@ -105,7 +117,7 @@ def transform_un_consolidated(raw_xml_path: Path, fecha_ingesta_iso: str | None 
     if fecha_ingesta_iso is None:
         fecha_ingesta_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
-    # 1) Parse XML y construir lista de dicts canónicos (sin hash aún)
+    # 1. Parse XML y construir lista de dicts canónicos (sin hash aún)
     canon_rows: List[Dict[str, Any]] = []
 
     ctx = ET.iterparse(str(raw_xml_path), events=("end",))
@@ -179,10 +191,10 @@ def transform_un_consolidated(raw_xml_path: Path, fecha_ingesta_iso: str | None 
     if not canon_rows:
         raise ValueError("No se pudieron extraer registros válidos desde UN (0 rows).")
 
-    # 2) Lista -> DataFrame
+    # 2. Lista -> DataFrame
     df = pd.DataFrame(canon_rows)
 
-    # 3) Hash estable (sin fecha_ingesta, id_registro, hash_contenido)
+    # 3. Hash estable (sin fecha_ingesta, id_registro, hash_contenido)
     def row_hash(row: pd.Series) -> str:
         d = row.to_dict()
         d.pop("fecha_ingesta", None)
@@ -193,7 +205,7 @@ def transform_un_consolidated(raw_xml_path: Path, fecha_ingesta_iso: str | None 
     df["hash_contenido"] = df.apply(row_hash, axis=1)
     df["id_registro"] = df["hash_contenido"].map(lambda h: make_id_registro("UN", h))
 
-    # 4) Orden final uniforme
+    # 4. Orden final uniforme
     df = df[CANON_COLS]
 
     meta = {

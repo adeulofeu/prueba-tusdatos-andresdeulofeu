@@ -1,3 +1,19 @@
+""" scripts/generate_terceros.py
+
+Generador de base sintética de terceros (para evaluar modelos de matching).
+
+Salida:
+- data/terceros_sinteticos.csv con columna 'coincidencia' como label (0/1).
+
+Casos generados:
+- ~9200 ficticios (no match)
+- ~800 matches distribuidos en: exact, typo, partial, alias, doc
+
+Nota:
+- Se apoya en consolidado para sembrar matches reales.
+
+"""
+
 import os
 import json
 import random
@@ -7,9 +23,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-# =========================
 # Config
-# =========================
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = os.getenv("DB_PATH", "analytics.db")
 DB_FILE = PROJECT_ROOT / DB_PATH
@@ -31,9 +45,7 @@ NACIONALIDADES = ["COLOMBIANA", "VENEZOLANA", "MEXICANA", "PERUANA", "ECUATORIAN
 NOMBRES_BASE = ["JUAN", "ANDRES", "MARIA", "LUISA", "CARLOS", "ANA", "DANIEL", "LAURA", "JORGE", "CAMILA", "DAVID", "SARA"]
 APELLIDOS_BASE = ["PEREZ", "GOMEZ", "RODRIGUEZ", "MARTINEZ", "HERNANDEZ", "LOPEZ", "GARCIA", "SANCHEZ", "TORRES", "RAMIREZ"]
 
-# =========================
 # Helpers
-# =========================
 def _json_load_list(x: Any) -> List[str]:
     if x is None:
         return []
@@ -144,9 +156,7 @@ def _row_to_synthetic_schema(r: Dict[str, Any], id_tercero: str) -> Dict[str, An
     "coincidencia": 1,   # MATCH REAL
     }
 
-# =========================
 # DB queries
-# =========================
 def _fetch_random_rows(conn: sqlite3.Connection, n: int) -> List[Dict[str, Any]]:
     sql = f"""
     SELECT tipo_sujeto, nombres, apellidos, fecha_nacimiento, nacionalidad, numero_documento, aliases
@@ -182,9 +192,7 @@ def _fetch_rows_with_alias(conn: sqlite3.Connection, n: int) -> List[Dict[str, A
             break
     return out
 
-# =========================
 # Generación
-# =========================
 def _gen_ficticios(n: int, start_idx: int) -> List[Dict[str, Any]]:
     rows = []
     for i in range(n):
@@ -225,17 +233,17 @@ def main():
     synthetic: List[Dict[str, Any]] = []
     next_id = 0
 
-    # 1) 9200 ficticios
+    # 9200 ficticios
     synthetic.extend(_gen_ficticios(N_FICTICIOS, next_id))
     next_id += N_FICTICIOS
 
-    # 2) 160 exactos (copiados de consolidado)
+    # 160 exactos (copiados de consolidado)
     exact_rows = _fetch_random_rows(conn, N_PER_CASE)
     for i, r in enumerate(exact_rows):
         synthetic.append(_row_to_synthetic_schema(r, f"T{next_id + i:07d}"))
     next_id += len(exact_rows)
 
-    # 3) 160 typo (consulto y edito)
+    # 160 typo (consulto y edito)
     typo_rows = _fetch_random_rows(conn, N_PER_CASE)
     for i, r in enumerate(typo_rows):
         t = _row_to_synthetic_schema(r, f"T{next_id + i:07d}")
@@ -247,7 +255,7 @@ def main():
         synthetic.append(t)
     next_id += len(typo_rows)
 
-    # 4) 160 partial (consulto y recorto)
+    # 160 partial (consulto y recorto)
     partial_rows = _fetch_random_rows(conn, N_PER_CASE)
     for i, r in enumerate(partial_rows):
         t = _row_to_synthetic_schema(r, f"T{next_id + i:07d}")
@@ -257,7 +265,7 @@ def main():
         synthetic.append(t)
     next_id += len(partial_rows)
 
-    # 5) 160 alias (consulto aliases y uso un alias como "nombres")
+    # 160 alias (consulto aliases y uso un alias como "nombres")
     alias_rows = _fetch_rows_with_alias(conn, N_PER_CASE)
     for i, r in enumerate(alias_rows):
         t = _row_to_synthetic_schema(r, f"T{next_id + i:07d}")
@@ -270,7 +278,7 @@ def main():
         synthetic.append(t)
     next_id += len(alias_rows)
 
-    # 6) 160 doc (solo si hay numero_documento) + debilitamos nombre para forzar doc
+    # 160 doc (solo si hay numero_documento) + debilitamos nombre para forzar doc
     doc_rows = _fetch_rows_with_doc(conn, N_PER_CASE)
     for i, r in enumerate(doc_rows):
         t = _row_to_synthetic_schema(r, f"T{next_id + i:07d}")

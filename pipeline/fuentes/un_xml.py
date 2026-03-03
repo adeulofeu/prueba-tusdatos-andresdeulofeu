@@ -1,3 +1,13 @@
+""" pipeline/fuentes/un_xml.py
+
+Extractor de Naciones Unidas (UN consolidated.xml).
+
+- Descarga el XML a data/raw/un/YYYYMMDD/consolidated.xml
+- Calcula conteos simples (INDIVIDUAL, ENTITY) para auditoría rápida
+- Retorna (by_source, durations, errors)
+
+"""
+
 import os
 import time
 import xml.etree.ElementTree as ET
@@ -47,6 +57,7 @@ def extract_un(data_dir: Path, logger):
     yyyymmdd = time.strftime("%Y%m%d")
     raw_path = data_dir / "raw" / "un" / yyyymmdd / "consolidated.xml"
 
+    # Creación de cliente HTTP a traves de clase creada en utils.py
     client = HTTPClient(logger)
 
     try:

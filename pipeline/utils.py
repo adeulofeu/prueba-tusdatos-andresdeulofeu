@@ -1,3 +1,20 @@
+"""pipeline/utils.py
+
+Utilidades comunes usadas en TODO el pipeline.
+
+Incluye:
+- Normalización de texto (norm_text) para comparar/hashear de forma consistente.
+- Parseo de fechas a ISO (parse_date_iso) con formatos comunes.
+- Hash estable de diccionarios (stable_hash_from_dict) para idempotencia.
+- Generación de id_registro (make_id_registro) derivado del hash.
+- HTTPClient: cliente HTTP con reintentos, backoff exponencial y logging.
+
+Notas de diseño:
+- norm_text aplica NFKD y elimina diacríticos (tildes) para robustez.
+- stable_hash_from_dict usa json.dumps(sort_keys=True) para que el hash sea determinístico.
+- HTTPClient está pensado para descargas "raw" simples (GET) y evita dependencias pesadas.
+"""
+
 import re
 import json
 import hashlib
@@ -9,6 +26,19 @@ import requests
 import unicodedata
 
 def norm_text(x: Any) -> Optional[str]:
+    """Normaliza texto para matching/hash.
+
+    Reglas:
+    - None/"" -> None
+    - strip
+    - normaliza unicode a NFKD
+    - elimina tildes/diacríticos
+    - uppercase
+    - colapsa espacios múltiples
+
+    Ejemplo:
+      "José   Pérez" -> "JOSE PEREZ"
+    """
     if x is None:
         return None
 
@@ -36,6 +66,17 @@ def norm_text(x: Any) -> Optional[str]:
 
 
 def parse_date_iso(x: Any) -> Optional[str]:
+    """Intenta parsear fechas a YYYY-MM-DD.
+
+    Admite formatos típicos:
+    - YYYY-MM-DD
+    - DD Mon YYYY / DD Month YYYY
+    - YYYY/MM/DD
+    - DD/MM/YYYY
+    - ISO con hora (incl. Z)
+
+    Si no parsea, retorna None (no levanta excepción).
+    """
     if x is None:
         return None
     s = str(x).strip()
@@ -49,7 +90,7 @@ def parse_date_iso(x: Any) -> Optional[str]:
         except Exception:
             pass
 
-    # intento ISO
+    # intento formato ISO
     try:
         return datetime.fromisoformat(s.replace("Z", "+00:00")).date().isoformat()
     except Exception:
@@ -57,11 +98,28 @@ def parse_date_iso(x: Any) -> Optional[str]:
 
 
 def stable_hash_from_dict(obj: Dict[str, Any]) -> str:
+    """Hash determinístico SHA-256 para un dict.
+
+    Claves:
+    - sort_keys=True asegura mismo orden de claves.
+    - separators compactos evitan cambios por espacios.
+    - ensure_ascii=False mantiene unicode estable.
+
+    Importante:
+    - Antes de hashear, asegúrate de excluir campos volátiles:
+      fecha_ingesta, updated_at, etc.
+    """
     payload = json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def make_id_registro(fuente: str, hash_contenido: str) -> str:
+    """Crea un ID corto y estable a partir del hash.
+
+    Esto facilita:
+    - llaves primarias cortas
+    - trazabilidad (prefijo de fuente)
+    """
     return f"{fuente}:{hash_contenido[:24]}"
 
 class HTTPClient:
@@ -119,6 +177,7 @@ class HTTPClient:
                 last_exception = e
                 self.logger.warning(f"[HTTP] Attempt {attempt} failed: {str(e)}")
 
+                # Reintento con backoff exponencial
                 if attempt < self.max_retries:
                     sleep_time = self.backoff_factor ** attempt
                     self.logger.info(f"[HTTP] Retrying in {sleep_time:.1f}s...")
