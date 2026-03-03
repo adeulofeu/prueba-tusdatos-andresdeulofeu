@@ -17,10 +17,11 @@ from pipeline.normalizacion.sdn_ofac_transform import transform_ofac_sdn
 from pipeline.normalizacion.un_transform import transform_un_consolidated
 from pipeline.normalizacion.paco_fgn_transform import transform_paco_fgn
 from pipeline.normalizacion.paco_siri_transform import transform_paco_siri
-from pipeline.carga.schema import init_staging_and_consolidado
+from pipeline.carga.schema import init_all_tables
 from pipeline.carga.sqlite_staging import clear_staging_for_run, load_to_staging
 from pipeline.carga.sqlite_merge import merge_staging_to_consolidado
 from pipeline.calidad.quality import validations
+from pipeline.monitoring.monitor import run_monitoring
 
 load_dotenv()
 
@@ -70,7 +71,7 @@ def init_db(conn):
     );
     """
     conn.executescript(ddl)
-    init_staging_and_consolidado(conn)
+    init_all_tables(conn)
     conn.commit()
 
 def run_quality(df, source_key: str, by_source: dict, errors: dict, hard_fail: bool = True):
@@ -348,10 +349,17 @@ def main():
 
     report_path = REPORTS_DIR / f"ingesta_{run_id}.json"
     report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-
     logger.info(f"Report written: {report_path}")
-    logger.info("Done.")
+    
+    # Monitoring (métricas + alertas + linaje)
+    try:
+        mon = run_monitoring(db_path=str(DB_FILE), report_path=str(report_path), logger=logger, channel="console")
+        logger.info(f"Monitoring done: {mon}")
+    except Exception as e:
+        # No queremos que monitoreo rompa el pipeline en esta prueba
+        logger.exception(f"Monitoring failed (non-blocking): {e}")
 
+    logger.info("Done.")
 
 if __name__ == "__main__":
     main()
