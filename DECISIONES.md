@@ -35,25 +35,24 @@ Cada fuente presenta diferencias en:
 
 ## 3. Estructura Final del Esquema Canónico
 
-```json
-{
-  "fuente": str,
-  "tipo_sujeto": str,
-  "nombres": str,
-  "apellidos": str,
-  "aliases": list,
-  "fecha_nacimiento": str,
-  "nacionalidad": list,
-  "numero_documento": str,
-  "tipo_sancion": str,
-  "fecha_sancion": str,
-  "fecha_vencimiento": str,
-  "activo": bool,
-  "fecha_ingesta": str,
-  "origen_id": str,
-  "hash_contenido": str,
-  "id_registro": str
-}
+"fuente": str,
+"tipo_sujeto": str,
+"nombres": str,
+"apellidos": str,
+"aliases": list,
+"fecha_nacimiento": str,
+"nacionalidad": list,
+"numero_documento": str,
+"tipo_sancion": str,
+"fecha_sancion": str,
+"fecha_vencimiento": str,
+"activo": bool,
+"fecha_ingesta": str,
+"origen_id": str,
+"hash_contenido": str,
+"id_registro": str
+
+---
 
 ## 4 Suposiciones y decisiones por campo
 
@@ -148,6 +147,8 @@ Formato:
 
 Con el fin de garantizar unicidad y trazabilidad
 
+---
+
 ## 5. Estrategia de actualización, matching incremental y notificaciones
 
 # 5.1 ¿Con qué frecuencia se actualiza cada fuente y cómo se detecta que hay una versión nueva?
@@ -199,8 +200,42 @@ para extraer solamente los id_registros con cambios y así reducir los costos co
 - El pipeline detecta el cambio de y actualiza la información en la tabla consolidada
 - Un proceso independiente consume eventos para enviar la notificación.
 
+---
+
 ## 6. Preguntas tecnicas
+
+6.1 Algoritmo de matching: ¿por qué eligió el algoritmo que usó? ¿En qué escenario fallaría? ¿Cómo escalaría el matching si la base de terceros fuera de 10 millones de registros en lugar de 10.000?
+
+Se seleccionó un enfoque híbrido basado en:
+- Similitud textual (Levenshtein como modelo principal).
+- Soporte para alias.
+- Prioridad absoluta por coincidencia exacta de documento.
+- Blocking previo para reducir el espacio de comparación.
+
+Levenshtein fue seleccionado porque:
+El criterio de selección priorizó un enfoque conservador desde la perspectiva de cumplimiento (compliance), donde el riesgo asociado a falsos negativos es considerablemente mayor que el de falsos positivos. Esta elección se puede ver en el notebook de entrenamiento de modelos en la siguiente dirección "pipeline\matchingmatching_models_evaluation.ipynb"
+
+El modelo podría presentar limitaciones en:
+- Transliteraciones complejas (árabe, ruso, chino).
+- Reordenamientos semánticos fuertes.
+- Empresas con nombres genéricos frecuentes.
+- Registros con múltiples alias no documentados.
+
+Para escalar a 10 millones de registros se requeririan las siguientes estrategias:
+- Implementar blocking más sofisticado
+- Migrar a motores de procesamiento distribuido (Spark)
+- Ejecutar Matching incremental
+
 6.2 Schema evolution: la fuente OFAC agrega un campo nuevo en su XML. ¿Cómo maneja ese cambio sin romper el pipeline ni perder datos históricos?
+
+La estrategia actual al momento de agregarse un nuevo campo que no se encuentre mapeado en el esquema canonico es la siguiente:
+
+- Parser tolerante: El transofrmador ignora campos no mapeados, no se rompe el pipeline si el campo no es obligatorio
+- Esquema canonico desacoplado: Solo se incluyen los cmapos explicitamente definidos en el esquema
+- Nuevos campos puede ser agregados sin modificar la estructura existente
+- Si el nuevo campo se incorpora al esquema canónico, el hash_contenido cambiará, generando un UPDATE controlado. Si el campo no se incorpora al esquema canónico, no impacta el hash ni el pipeline.
+
+6.3 Falsos positivos vs. falsos negativos: en un motor de matching para compliance, ¿cuál es más costoso? ¿Cómo calibraría el umbral de similitud y qué proceso operacional diseñaría para manejar la zona gris?
 
 Falso negativo: Dejar pasar un sancionado.
 - Impacto regulatorio y financiero severo.
@@ -248,9 +283,11 @@ Ajustes operativos:
 
 Este enfoque permite balancear riesgo regulatorio y costo operativo.
 
-6.3 Acceso a los datos: un analista externo solicita acceso completo a las listas normalizadas para un proyecto de investigación. Los datos son públicos en origen pero el pipeline agrega información adicional. ¿Cómo maneja el request?
+El sistema está diseñado para priorizar recall sobre precision en primera etapa, delegando el refinamiento al proceso manual en zona gris, separando claramente la decisión algorítmica de la decisión operativa, manteniendo control humano sobre los casos ambiguos.
 
-Estrategia: Acceso por capas y roles
+6.4 Acceso a los datos: un analista externo solicita acceso completo a las listas normalizadas para un proyecto de investigación. Los datos son públicos en origen pero el pipeline agrega información adicional. ¿Cómo maneja el request?
+
+El acceso se controla mediante RBAC (Role-Based Access Control), con registro de auditoría por usuario, fecha y propósito de exportación.
 
 Aunque los datos en origen son públicos, el pipeline agrega:
 - Normalización estructurada
@@ -290,13 +327,13 @@ Incluye:
 
 Se entrega únicamente si el proyecto requiere auditoría profunda.
 
-Principios aplicados
+Con esta estrategia se estarían aplicando los siguientes principios:
 - Separación entre datos públicos y lógica interna.
 - Mínimo privilegio.
 - Trazabilidad y control de acceso.
 - Exportes específicos para el caso de uso.
 
-6.4 Frecuencia vs. costo: OFAC puede actualizarse varias veces al día. ¿Cómo diseñaría el pipeline para balancear frescura de datos con costo operacional?
+6.5 Frecuencia vs. costo: OFAC puede actualizarse varias veces al día. ¿Cómo diseñaría el pipeline para balancear frescura de datos con costo operacional?
 
 El pipeline implementa:
 Detección de cambios previa al procesamiento
@@ -310,6 +347,9 @@ Procesamiento incremental
 Ventanas de actualización
 - Se pueden definir ventanas máximas de procesamiento.
 - En caso de múltiples cambios en corto tiempo, se puede agrupar el procesamiento.
+
+Implementación de una arquitectura basada en eventos
+- Implementación de una cola de eventos donde múltiples actualizaciones en una ventana corta se consoliden en un único procesamiento incremental.
 
 Resultado
 - Se mantiene frescura de datos.

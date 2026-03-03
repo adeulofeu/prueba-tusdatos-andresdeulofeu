@@ -354,13 +354,13 @@ def main():
                 status = "SUCCESS_WITH_ERRORS"
 
         # 4. Merge de la data a la tabla de productiva
+        merge_stats = None
         try:
             t_mg = time.time()
-            merge_staging_to_consolidado(conn, run_id)
+            merge_stats = merge_staging_to_consolidado(conn, run_id)  # <- ahora retorna dict
             durations["merge_final_sec"] = round(time.time() - t_mg, 4)
-            logger.info(f"Final merge OK for run_id={run_id}")
+            logger.info(f"Final merge OK for run_id={run_id} stats={merge_stats}")
         except Exception as e:
-            # Si el merge falla, la ejecución se considera FAILED
             logger.exception("Final merge failed")
             status = "FAILED"
             notes = f"Final merge failed: {str(e)}"
@@ -387,14 +387,15 @@ def main():
 
     # 6. Reporte JSON (auditoría) - se escribe en disco
     report = {
-        "run_id": run_id,
-        "env": ENV,
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "status": status,
-        "durations_sec": durations,
-        "by_source": by_source,
-        "errors": errors
+    "run_id": run_id,
+    "env": ENV,
+    "started_at": started_at,
+    "finished_at": finished_at,
+    "status": status,
+    "durations_sec": durations,
+    "by_source": by_source,
+    "errors": errors,
+    "merge_stats": merge_stats,
     }
 
     report_path = REPORTS_DIR / f"ingesta_{run_id}.json"

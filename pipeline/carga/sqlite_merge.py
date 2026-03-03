@@ -20,28 +20,59 @@ Esto te da:
 """
 
 import sqlite3
+from typing import Dict, Any
 
-def merge_staging_to_consolidado(conn: sqlite3.Connection, run_id: str) -> None:
+
+def merge_staging_to_consolidado(conn: sqlite3.Connection, run_id: str) -> Dict[str, Any]:
     """
-    Merge final optimizado (INSERT + 2 UPDATEs) y con pocos bindings.
+    Merge final: staging_consolidado -> consolidado.
 
-    Flujo:
-    1) Si staging está vacío → salir
-    2) INSERT nuevos
-    3) UPDATE last_seen_at + fecha_ingesta (todos los presentes)
-    4) UPDATE SOLO registros cuyo hash cambió (copia columnas desde staging)
+    Retorna estadísticas para el reporte de ingesta:
+    - seen: total de registros presentes en staging para el run
+    - seen_by_source: conteo por fuente en staging
+    - inserted: nuevos registros insertados en consolidado
+    - updated: registros existentes cuyo hash cambió (actualizados)
+    - missing_by_source: conteo de registros que existían en consolidado (activo=1)
+      pero NO aparecieron en el snapshot del run (por fuente). Esto es el equivalente
+      operativo de "eliminados" / "missing" para listas tipo snapshot.
+
+    Nota: NO marcamos inactivos automáticamente; solo reportamos. Si quisieras,
+    se puede extender con un flag para setear activo=0.
     """
 
-    # 0. Validar si hay datos en staging para este run
+    # 0) Validar si hay datos en staging para este run
     cur = conn.execute(
         "SELECT 1 FROM staging_consolidado WHERE run_id = ? LIMIT 1;",
         (run_id,),
     )
     if cur.fetchone() is None:
-        return
+        return {
+            "run_id": run_id,
+            "seen": 0,
+            "seen_by_source": {},
+            "inserted": 0,
+            "updated": 0,
+            "missing_by_source": {},
+        }
 
-    # 1. INSERT nuevos registros
-    sql_insert_new =
+    # 0.1) Conteos "seen" (staging snapshot del run)
+    seen = conn.execute(
+        "SELECT COUNT(*) FROM staging_consolidado WHERE run_id = ?;",
+        (run_id,),
+    ).fetchone()[0]
+
+    seen_by_source_rows = conn.execute(
+        """
+        SELECT fuente, COUNT(*) 
+        FROM staging_consolidado
+        WHERE run_id = ?
+        GROUP BY fuente;
+        """,
+        (run_id,),
+    ).fetchall()
+    seen_by_source = {fuente: int(n) for fuente, n in seen_by_source_rows}
+
+    # 1) INSERT nuevos registros
     conn.execute(
         """
         INSERT INTO consolidado (
@@ -63,8 +94,9 @@ def merge_staging_to_consolidado(conn: sqlite3.Connection, run_id: str) -> None:
         """,
         (run_id,),
     )
+    inserted = conn.execute("SELECT changes();").fetchone()[0]
 
-    # 2. UPDATE básico: siempre actualizar last_seen_at + fecha_ingesta
+    # 2) UPDATE básico: siempre actualizar last_seen_at + fecha_ingesta (todos los presentes)
     conn.execute(
         """
         WITH s AS (
@@ -80,9 +112,9 @@ def merge_staging_to_consolidado(conn: sqlite3.Connection, run_id: str) -> None:
         """,
         (run_id,),
     )
+    # (no tomamos changes() aquí porque incluye también updates “sin cambio”)
 
-    # 3. UPDATE SOLO cuando hash cambió (copiar columnas desde staging)
-    #    Ventaja: solo 1 binding (run_id) y el resto lo resuelve el CTE.
+    # 3) UPDATE SOLO cuando hash cambió (copiar columnas desde staging)
     conn.execute(
         """
         WITH s AS (
@@ -123,5 +155,37 @@ def merge_staging_to_consolidado(conn: sqlite3.Connection, run_id: str) -> None:
         """,
         (run_id,),
     )
+    updated = conn.execute("SELECT changes();").fetchone()[0]
+
+    # 4) Missing/"eliminados" por fuente (snapshot semantics)
+    # Definición: registros activos en consolidado para una fuente que NO aparecen en staging (run actual).
+    missing_by_source: Dict[str, int] = {}
+    for fuente in seen_by_source.keys():
+        missing = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM consolidado c
+            WHERE c.fuente = ?
+              AND c.activo = 1
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM staging_consolidado s
+                  WHERE s.run_id = ?
+                    AND s.fuente = ?
+                    AND s.id_registro = c.id_registro
+              );
+            """,
+            (fuente, run_id, fuente),
+        ).fetchone()[0]
+        missing_by_source[fuente] = int(missing)
 
     conn.commit()
+
+    return {
+        "run_id": run_id,
+        "seen": int(seen),
+        "seen_by_source": seen_by_source,
+        "inserted": int(inserted),
+        "updated": int(updated),
+        "missing_by_source": missing_by_source,
+    }

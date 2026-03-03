@@ -193,9 +193,28 @@ def _fetch_rows_with_alias(conn: sqlite3.Connection, n: int) -> List[Dict[str, A
     return out
 
 # Generación
-def _gen_ficticios(n: int, start_idx: int) -> List[Dict[str, Any]]:
+def _name_key(tipo_sujeto: str, nombres: Optional[str], apellidos: Optional[str]) -> str:
+    # clave estable para evitar duplicados de nombres (no usa id)
+    n = (nombres or "").strip().upper()
+    a = (apellidos or "").strip().upper()
+    if tipo_sujeto == "PERSONA_JURIDICA":
+        return f"J|{n}"
+    return f"N|{n}|{a}"
+
+
+def _gen_ficticios(n: int, start_idx: int, seen_name_keys: set) -> List[Dict[str, Any]]:
     rows = []
-    for i in range(n):
+
+    SUFIJOS_EMP = ["SAS", "LTDA", "S.A.", "S.A.S.", "S. EN C.", "CIA"]
+    TAGS_EMP = ["COMERCIAL", "SERVICIOS", "INVERSIONES", "LOGISTICA", "HOLDING", "GROUP", "TRADING"]
+
+    i = 0
+    attempts = 0
+    max_attempts = n * 50  # evita loop infinito si el espacio fuera pequeño
+
+    while i < n and attempts < max_attempts:
+        attempts += 1
+
         tipo_sujeto = "PERSONA_NATURAL" if random.random() < 0.85 else "PERSONA_JURIDICA"
 
         if tipo_sujeto == "PERSONA_NATURAL":
@@ -203,9 +222,16 @@ def _gen_ficticios(n: int, start_idx: int) -> List[Dict[str, Any]]:
             apellidos = f"{random.choice(APELLIDOS_BASE)} {random.choice(APELLIDOS_BASE)}"
             fecha_nacimiento = _random_fecha_nacimiento()
         else:
-            nombres = f"{random.choice(APELLIDOS_BASE)} {random.choice(['SAS','LTDA','S.A.'])}"
+            # ✅ Aumentamos diversidad para evitar miles de repetidos tipo "GOMEZ LTDA"
+            nombres = f"{random.choice(APELLIDOS_BASE)} {random.choice(APELLIDOS_BASE)} {random.choice(TAGS_EMP)} {random.choice(SUFIJOS_EMP)} {random.randint(10, 9999)}"
             apellidos = None
             fecha_nacimiento = None
+
+        key = _name_key(tipo_sujeto, nombres, apellidos)
+        if key in seen_name_keys:
+            continue  # regenerar
+
+        seen_name_keys.add(key)
 
         nacionalidad = _pick_nacionalidad() if tipo_sujeto == "PERSONA_NATURAL" else None
         numero_documento, tipo_documento = _random_doc(tipo_sujeto)
@@ -221,8 +247,13 @@ def _gen_ficticios(n: int, start_idx: int) -> List[Dict[str, Any]]:
             "numero_documento": numero_documento,
             "tipo_documento": tipo_documento,
             "pais_residencia": pais_residencia,
-            "coincidencia": 0,   # No match
+            "coincidencia": 0,
         })
+        i += 1
+
+    if i < n:
+        raise RuntimeError(f"No se pudieron generar {n} ficticios únicos. Generados={i}. Amplía vocabulario base.")
+
     return rows
 
 def main():
@@ -232,9 +263,10 @@ def main():
 
     synthetic: List[Dict[str, Any]] = []
     next_id = 0
+    seen_name_keys = set()
 
     # 9200 ficticios
-    synthetic.extend(_gen_ficticios(N_FICTICIOS, next_id))
+    synthetic.extend(_gen_ficticios(N_FICTICIOS, next_id, seen_name_keys))
     next_id += N_FICTICIOS
 
     # 160 exactos (copiados de consolidado)
