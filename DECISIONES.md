@@ -1,7 +1,7 @@
 # Diseño del Esquema Canónico
 ## Suposiciones y Decisiones de Arquitectura
 
-## 1. Objetivo
+# 1. Objetivo
 
 El objetivo del esquema canónico es unificar múltiples fuentes heterogéneas de datos de sanciones en un modelo único, consistente y extensible que permita:
 
@@ -13,7 +13,7 @@ El objetivo del esquema canónico es unificar múltiples fuentes heterogéneas d
 
 ---
 
-## 2. Fuentes Integradas
+# 2. Fuentes Integradas
 
 Las fuentes consideradas en el diseño fueron:
 
@@ -33,34 +33,49 @@ Cada fuente presenta diferencias en:
 
 ---
 
-## 3. Estructura Final del Esquema Canónico
+# 3. Estructura Final del Esquema Canónico
 
 "fuente": str,
+
 "tipo_sujeto": str,
+
 "nombres": str,
+
 "apellidos": str,
+
 "aliases": list,
+
 "fecha_nacimiento": str,
+
 "nacionalidad": list,
+
 "numero_documento": str,
+
 "tipo_sancion": str,
+
 "fecha_sancion": str,
+
 "fecha_vencimiento": str,
+
 "activo": bool,
+
 "fecha_ingesta": str,
+
 "origen_id": str,
+
 "hash_contenido": str,
+
 "id_registro": str
 
 ---
 
-## 4 Suposiciones y decisiones por campo
+# 4 Suposiciones y decisiones por campo
 
-# 4.1 Fuente
+## 4.1 Fuente
 - Cada registro pertence exclusivamente a una fuente primaria
 - No se implementó deduplicción entre fuentes
 
-# 4.2 Tipo sujeto
+## 4.2 Tipo sujeto
 Valores definidos
 - PERSONA_NATURAL
 - PERSONA_JURIDICA
@@ -74,7 +89,7 @@ Decisiones tomadas
 Limitaciones:
 No se implementaron categorías intermedias
 
-# 4.3 Nombres y apellidos
+## 4.3 Nombres y apellidos
 Decisiones:
 - Se separan nombres y apellidos solo cuando la fuente lo permite
 - Para PERSONA_JURIDICA apellidos siempre seran NULL
@@ -85,48 +100,48 @@ Estandarización aplicadas:
 - Trim
 - Conversión de mayúsculas y eliminación de tildes
 
-# 4.4 Aliases
+## 4.4 Aliases
 - Siempre se representa como lista
 - Nunca se alamacenan como NULL
 - Permite múltiples alias cuando la fuente lo proporciona
 
 Esto facilita comparaciones, serialización y hash deterministico
 
-# 4.5 Fecha de nacimiento
+## 4.5 Fecha de nacimiento
 - Si solo trae el año se convierte a formato iso YYYY-01-01
 - Si trae un rango se almacena como NULL
 
-# 4.6 Nacionalidad
+## 4.6 Nacionalidad
 - siempre representado como lista
 - Actualmente no se realiza mapeo obligatorio a codigos ISO
 
-# 4.7 Numero de documento
+## 4.7 Numero de documento
 - Se utiliza solo el primer documento disponible
 - No se modelan múltiples documentos por registro
 
-# 4.8 Tipo de sanción
+## 4.8 Tipo de sanción
 Como cada fuente modela sanciones de forma distinta se construye un campo explicativo tipo string compuesto:
 List=SDN | Program=CUBA | Type=Block
 
 Se prioriza legibilidad, trazabilidad simplicidad
 
-# 4.9 Fecha de sanción
+## 4.9 Fecha de sanción
 - Todas las fechas se convierten a formato ISO YYYY-MM-DD
 - Si no es posible parsear se deja como NULL
 
-# 4.10 Fecha de vencimiento
+## 4.10 Fecha de vencimiento
 - Actualmente siempre como NULL
 - Se mantiene en el modelo para futuras actualziaciones
 
-# 4.11 Activo
+## 4.11 Activo
 - Se asume True para todos los registros
 - No se ha implementado detección de sanciones removidas
 
-# 4.12 Fecha de ingesta
+## 4.12 Fecha de ingesta
 - Formato ISO UTC con sufijo Z
 - No participa en el hash de contenido
 
-# 4.13 Origen Id
+## 4.13 Origen Id
 Se usa el identificador de origen dependiendo de la fuente
 - OFAC: identityId
 - UN: DATAID
@@ -135,13 +150,13 @@ Se usa el identificador de origen dependiendo de la fuente
 
 Permite trazabilidad hacia el sistema origen
 
-# 4.14 Hash de contenido
+## 4.14 Hash de contenido
 Se calcula sobre el valor del diccionario con el modelo canonico excluyendo la fecha de ingesta con el fin de:
 
 - Detectar cambios reales en el contenido
 - Permitir merge incremental
 
-# 4.15 Id de registro
+## 4.15 Id de registro
 Formato:
 {fuente}:{hash_contenido}
 
@@ -149,9 +164,9 @@ Con el fin de garantizar unicidad y trazabilidad
 
 ---
 
-## 5. Estrategia de actualización, matching incremental y notificaciones
+# 5. Estrategia de actualización, matching incremental y notificaciones
 
-# 5.1 ¿Con qué frecuencia se actualiza cada fuente y cómo se detecta que hay una versión nueva?
+## 5.1 ¿Con qué frecuencia se actualiza cada fuente y cómo se detecta que hay una versión nueva?
 
 La frecuencia se define según criticidad y volatilidad histórica de la fuente:
 
@@ -202,9 +217,9 @@ para extraer solamente los id_registros con cambios y así reducir los costos co
 
 ---
 
-## 6. Preguntas tecnicas
+# 6. Preguntas tecnicas
 
-6.1 Algoritmo de matching: ¿por qué eligió el algoritmo que usó? ¿En qué escenario fallaría? ¿Cómo escalaría el matching si la base de terceros fuera de 10 millones de registros en lugar de 10.000?
+## 6.1 Algoritmo de matching: ¿por qué eligió el algoritmo que usó? ¿En qué escenario fallaría? ¿Cómo escalaría el matching si la base de terceros fuera de 10 millones de registros en lugar de 10.000?
 
 Se seleccionó un enfoque híbrido basado en:
 - Similitud textual (Levenshtein como modelo principal).
@@ -226,7 +241,7 @@ Para escalar a 10 millones de registros se requeririan las siguientes estrategia
 - Migrar a motores de procesamiento distribuido (Spark)
 - Ejecutar Matching incremental
 
-6.2 Schema evolution: la fuente OFAC agrega un campo nuevo en su XML. ¿Cómo maneja ese cambio sin romper el pipeline ni perder datos históricos?
+## 6.2 Schema evolution: la fuente OFAC agrega un campo nuevo en su XML. ¿Cómo maneja ese cambio sin romper el pipeline ni perder datos históricos?
 
 La estrategia actual al momento de agregarse un nuevo campo que no se encuentre mapeado en el esquema canonico es la siguiente:
 
@@ -235,7 +250,7 @@ La estrategia actual al momento de agregarse un nuevo campo que no se encuentre 
 - Nuevos campos puede ser agregados sin modificar la estructura existente
 - Si el nuevo campo se incorpora al esquema canónico, el hash_contenido cambiará, generando un UPDATE controlado. Si el campo no se incorpora al esquema canónico, no impacta el hash ni el pipeline.
 
-6.3 Falsos positivos vs. falsos negativos: en un motor de matching para compliance, ¿cuál es más costoso? ¿Cómo calibraría el umbral de similitud y qué proceso operacional diseñaría para manejar la zona gris?
+## 6.3 Falsos positivos vs. falsos negativos: en un motor de matching para compliance, ¿cuál es más costoso? ¿Cómo calibraría el umbral de similitud y qué proceso operacional diseñaría para manejar la zona gris?
 
 Falso negativo: Dejar pasar un sancionado.
 - Impacto regulatorio y financiero severo.
@@ -285,7 +300,7 @@ Este enfoque permite balancear riesgo regulatorio y costo operativo.
 
 El sistema está diseñado para priorizar recall sobre precision en primera etapa, delegando el refinamiento al proceso manual en zona gris, separando claramente la decisión algorítmica de la decisión operativa, manteniendo control humano sobre los casos ambiguos.
 
-6.4 Acceso a los datos: un analista externo solicita acceso completo a las listas normalizadas para un proyecto de investigación. Los datos son públicos en origen pero el pipeline agrega información adicional. ¿Cómo maneja el request?
+## 6.4 Acceso a los datos: un analista externo solicita acceso completo a las listas normalizadas para un proyecto de investigación. Los datos son públicos en origen pero el pipeline agrega información adicional. ¿Cómo maneja el request?
 
 El acceso se controla mediante RBAC (Role-Based Access Control), con registro de auditoría por usuario, fecha y propósito de exportación.
 
@@ -333,7 +348,7 @@ Con esta estrategia se estarían aplicando los siguientes principios:
 - Trazabilidad y control de acceso.
 - Exportes específicos para el caso de uso.
 
-6.5 Frecuencia vs. costo: OFAC puede actualizarse varias veces al día. ¿Cómo diseñaría el pipeline para balancear frescura de datos con costo operacional?
+## 6.5 Frecuencia vs. costo: OFAC puede actualizarse varias veces al día. ¿Cómo diseñaría el pipeline para balancear frescura de datos con costo operacional?
 
 El pipeline implementa:
 Detección de cambios previa al procesamiento
