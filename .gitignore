@@ -13,4 +13,7 @@ Include/
 share/
 pyvenv.cfg
 
+analytics.db
+data/raw/
+reportes/
 notebooks/
