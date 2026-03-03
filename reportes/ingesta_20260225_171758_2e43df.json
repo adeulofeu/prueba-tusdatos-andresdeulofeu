@@ -1,0 +1,78 @@
+{
+  "run_id": "20260225_171758_2e43df",
+  "env": "local",
+  "started_at": "2026-02-25 17:17:58",
+  "finished_at": "2026-02-25 17:28:05",
+  "status": "FAILED",
+  "durations_sec": {
+    "init_db_sec": 0.0045,
+    "download_sec": 575.4698,
+    "parse_sec": 0.4507,
+    "extract_sec": 0.3791,
+    "ofac_transform_sec": 0.0024,
+    "un_transform_sec": 0.0008,
+    "un_load_staging_sec": 0.1649,
+    "paco_fgn_transform_sec": 1.3387,
+    "paco_fgn_load_staging_sec": 0.2092,
+    "paco_siri_transform_sec": 17.1302,
+    "paco_siri_load_staging_sec": 8.0223
+  },
+  "by_source": {
+    "OFAC_SDN": {
+      "status": "OK",
+      "raw_xml_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\ofac_sdn\\20260225\\SDN_ENHANCED.xml",
+      "raw_xml_bytes": 106016366,
+      "transform_status": "FAILED"
+    },
+    "UN": {
+      "status": "OK",
+      "raw_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\un\\20260225\\consolidated.xml",
+      "raw_bytes": 2030620,
+      "individuals": 730,
+      "entities": 273,
+      "total_records": 1003,
+      "transform_status": "OK",
+      "staging_records": 1003,
+      "fecha_ingesta": "2026-02-25T22:27:36Z",
+      "mode": "streaming"
+    },
+    "EU": {
+      "status": "FAILED"
+    },
+    "PACO_SIRI": {
+      "status": "OK",
+      "raw_zip_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\paco_siri\\20260225\\antecedentes_SIRI_sanciones_Cleaned.zip",
+      "raw_zip_bytes": 1408044,
+      "extracted_file_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\paco_siri\\20260225\\extracted\\data_4f053991-40da-456e-9f71-a6ae406f715b_f3e390d2-7289-4642-b51c-84a3fb6964ea.txt",
+      "extracted_file_name": "data_4f053991-40da-456e-9f71-a6ae406f715b_f3e390d2-7289-4642-b51c-84a3fb6964ea.txt",
+      "extracted_file_bytes": 19056546,
+      "transform_status": "OK",
+      "staging_records": 46584,
+      "encoding_used": "utf-8",
+      "bad_rows_skipped": 0,
+      "rows_parsed": 46584,
+      "records_out": 46584
+    },
+    "PACO_FGN": {
+      "status": "OK",
+      "raw_csv_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\paco_fgn\\20260225\\sanciones_penales_FGN.csv",
+      "raw_csv_bytes": 540691,
+      "transform_status": "OK",
+      "staging_records": 3902
+    }
+  },
+  "errors": {
+    "EU": [
+      {
+        "stage": "extract",
+        "error": "403 Client Error: Forbidden for url: https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content"
+      }
+    ],
+    "OFAC_SDN": [
+      {
+        "stage": "transform_load_staging",
+        "error": "name '_parse_ofac_xml_to_rows' is not defined"
+      }
+    ]
+  }
+}

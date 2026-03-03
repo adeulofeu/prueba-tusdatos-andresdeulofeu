@@ -1,0 +1,23 @@
+{
+  "run_id": "20260224_162950_178d08",
+  "env": "local",
+  "started_at": "2026-02-24 16:29:50",
+  "finished_at": "2026-02-24 16:29:54",
+  "status": "SUCCESS",
+  "durations_sec": {
+    "init_db_sec": 0.0026,
+    "download_sec": 2.8854,
+    "parse_sec": 0.4021
+  },
+  "by_source": {
+    "UN": {
+      "status": "OK",
+      "raw_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\un\\20260224\\consolidated.xml",
+      "raw_bytes": 2025693,
+      "individuals": 726,
+      "entities": 273,
+      "total_records": 999
+    }
+  },
+  "errors": {}
+}

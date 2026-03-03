@@ -1,0 +1,100 @@
+{
+  "run_id": "20260228_095030_8b6d8f",
+  "env": "local",
+  "started_at": "2026-02-28 09:50:30",
+  "finished_at": "2026-02-28 09:52:07",
+  "status": "SUCCESS_WITH_ERRORS",
+  "durations_sec": {
+    "init_db_sec": 0.0559,
+    "download_sec": 17.637,
+    "parse_sec": 0.1417,
+    "extract_sec": 0.1111,
+    "ofac_transform_sec": 11.056,
+    "ofac_load_staging_sec": 3.1569,
+    "un_transform_sec": 0.2011,
+    "un_load_staging_sec": 0.2354,
+    "paco_fgn_transform_sec": 1.3791,
+    "paco_fgn_load_staging_sec": 0.9421,
+    "paco_siri_transform_sec": 49.2264,
+    "merge_final_sec": 2.9276
+  },
+  "by_source": {
+    "OFAC_SDN": {
+      "status": "OK",
+      "raw_xml_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\ofac_sdn\\20260228\\SDN_ENHANCED.xml",
+      "raw_xml_bytes": 106019348,
+      "quality_issue_count": 0,
+      "quality_error_count": 0,
+      "quality_warn_count": 0,
+      "quality_issues": [],
+      "transform_status": "OK",
+      "staging_records": 18704,
+      "records_out": 18704,
+      "fecha_ingesta": "2026-02-28T14:50:57Z",
+      "mode": "dataframe",
+      "source": "OFAC",
+      "entities_parsed": 18704
+    },
+    "UN": {
+      "status": "OK",
+      "raw_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\un\\20260228\\consolidated.xml",
+      "raw_bytes": 2025856,
+      "individuals": 730,
+      "entities": 272,
+      "total_records": 1002,
+      "quality_issue_count": 0,
+      "quality_error_count": 0,
+      "quality_warn_count": 0,
+      "quality_issues": [],
+      "transform_status": "OK",
+      "staging_records": 1002,
+      "records_out": 1002,
+      "fecha_ingesta": "2026-02-28T14:51:12Z",
+      "mode": "dataframe",
+      "source": "UN"
+    },
+    "EU": {
+      "status": "FAILED"
+    },
+    "PACO_SIRI": {
+      "status": "OK",
+      "raw_zip_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\paco_siri\\20260228\\antecedentes_SIRI_sanciones_Cleaned.zip",
+      "raw_zip_bytes": 1408044,
+      "extracted_file_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\paco_siri\\20260228\\extracted\\data_4f053991-40da-456e-9f71-a6ae406f715b_f3e390d2-7289-4642-b51c-84a3fb6964ea.txt",
+      "extracted_file_name": "data_4f053991-40da-456e-9f71-a6ae406f715b_f3e390d2-7289-4642-b51c-84a3fb6964ea.txt",
+      "extracted_file_bytes": 19056546,
+      "transform_status": "FAILED_QUALITY",
+      "encoding_used": "utf-8",
+      "bad_rows_skipped": 0,
+      "rows_parsed": 46584,
+      "records_out": 46584,
+      "fecha_ingesta": "2026-02-28T09:51:14Z"
+    },
+    "PACO_FGN": {
+      "status": "OK",
+      "raw_csv_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\paco_fgn\\20260228\\sanciones_penales_FGN.csv",
+      "raw_csv_bytes": 540691,
+      "quality_issue_count": 0,
+      "quality_error_count": 0,
+      "quality_warn_count": 0,
+      "quality_issues": [],
+      "transform_status": "OK",
+      "staging_records": 3902,
+      "records_out": 3902
+    }
+  },
+  "errors": {
+    "EU": [
+      {
+        "stage": "extract",
+        "error": "403 Client Error: Forbidden for url: https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content"
+      }
+    ],
+    "PACO_SIRI": [
+      {
+        "stage": "quality",
+        "error": "Quality checks failed: hash_unique_by_fuente_origen_id: hash_contenido debe ser \u00fanico por (fuente, origen_id)."
+      }
+    ]
+  }
+}

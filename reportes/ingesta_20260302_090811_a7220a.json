@@ -1,0 +1,89 @@
+{
+  "run_id": "20260302_090811_a7220a",
+  "env": "local",
+  "started_at": "2026-03-02 09:08:11",
+  "finished_at": "2026-03-02 09:09:41",
+  "status": "SUCCESS_WITH_ERRORS",
+  "durations_sec": {
+    "init_db_sec": 0.0037,
+    "download_sec": 21.0127,
+    "extract_sec": 0.0863,
+    "ofac_transform_sec": 7.7279,
+    "ofac_load_staging_sec": 6.5644,
+    "paco_fgn_transform_sec": 1.0039,
+    "paco_fgn_load_staging_sec": 0.5469,
+    "paco_siri_transform_sec": 34.8781,
+    "merge_final_sec": 0.8897
+  },
+  "by_source": {
+    "OFAC_SDN": {
+      "status": "OK",
+      "raw_xml_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tusdatos\\data\\raw\\ofac_sdn\\20260302\\SDN_ENHANCED.xml",
+      "raw_xml_bytes": 106019348,
+      "quality_issue_count": 0,
+      "quality_error_count": 0,
+      "quality_warn_count": 0,
+      "quality_issues": [],
+      "transform_status": "OK",
+      "staging_records": 18704,
+      "records_out": 18704,
+      "fecha_ingesta": "2026-03-02T14:08:49Z",
+      "mode": "dataframe",
+      "source": "OFAC",
+      "entities_parsed": 18704
+    },
+    "UN": {
+      "status": "FAILED",
+      "transform_status": "SKIPPED"
+    },
+    "EU": {
+      "status": "FAILED"
+    },
+    "PACO_SIRI": {
+      "status": "OK",
+      "raw_zip_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tusdatos\\data\\raw\\paco_siri\\20260302\\antecedentes_SIRI_sanciones_Cleaned.zip",
+      "raw_zip_bytes": 1408044,
+      "extracted_file_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tusdatos\\data\\raw\\paco_siri\\20260302\\extracted\\data_4f053991-40da-456e-9f71-a6ae406f715b_f3e390d2-7289-4642-b51c-84a3fb6964ea.txt",
+      "extracted_file_name": "data_4f053991-40da-456e-9f71-a6ae406f715b_f3e390d2-7289-4642-b51c-84a3fb6964ea.txt",
+      "extracted_file_bytes": 19056546,
+      "transform_status": "FAILED_QUALITY",
+      "encoding_used": "utf-8",
+      "bad_rows_skipped": 0,
+      "rows_parsed": 46584,
+      "records_out": 46584,
+      "fecha_ingesta": "2026-03-02T09:09:05Z"
+    },
+    "PACO_FGN": {
+      "status": "OK",
+      "raw_csv_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tusdatos\\data\\raw\\paco_fgn\\20260302\\sanciones_penales_FGN.csv",
+      "raw_csv_bytes": 540691,
+      "quality_issue_count": 0,
+      "quality_error_count": 0,
+      "quality_warn_count": 0,
+      "quality_issues": [],
+      "transform_status": "OK",
+      "staging_records": 3902,
+      "records_out": 3902
+    }
+  },
+  "errors": {
+    "UN": [
+      {
+        "stage": "extract",
+        "error": "HTTPSConnectionPool(host='scsanctions.un.org', port=443): Max retries exceeded with url: /resources/xml/en/consolidated.xml (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1032)')))"
+      }
+    ],
+    "EU": [
+      {
+        "stage": "extract",
+        "error": "403 Client Error: Forbidden for url: https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content"
+      }
+    ],
+    "PACO_SIRI": [
+      {
+        "stage": "quality",
+        "error": "Quality checks failed: hash_unique_by_fuente_origen_id: hash_contenido debe ser \u00fanico por (fuente, origen_id)."
+      }
+    ]
+  }
+}

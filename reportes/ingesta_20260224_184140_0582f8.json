@@ -1,0 +1,55 @@
+{
+  "run_id": "20260224_184140_0582f8",
+  "env": "local",
+  "started_at": "2026-02-24 18:41:40",
+  "finished_at": "2026-02-24 18:41:51",
+  "status": "SUCCESS_WITH_ERRORS",
+  "durations_sec": {
+    "init_db_sec": 0.0042,
+    "download_sec": 7.3016,
+    "parse_sec": 0.1886,
+    "extract_sec": 0.1631,
+    "scrape_sec": 1.9595
+  },
+  "by_source": {
+    "UN": {
+      "status": "OK",
+      "raw_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\un\\20260224\\consolidated.xml",
+      "raw_bytes": 2030620,
+      "individuals": 730,
+      "entities": 273,
+      "total_records": 1003
+    },
+    "EU": {
+      "status": "FAILED"
+    },
+    "PACO_SIRI": {
+      "status": "OK",
+      "raw_zip_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\paco_siri\\20260224\\antecedentes_SIRI_sanciones_Cleaned.zip",
+      "raw_zip_bytes": 1408044,
+      "extracted_file_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\paco_siri\\20260224\\extracted\\data_4f053991-40da-456e-9f71-a6ae406f715b_f3e390d2-7289-4642-b51c-84a3fb6964ea.txt",
+      "extracted_file_name": "data_4f053991-40da-456e-9f71-a6ae406f715b_f3e390d2-7289-4642-b51c-84a3fb6964ea.txt",
+      "extracted_file_bytes": 19056546
+    },
+    "PACO_FGN": {
+      "status": "OK",
+      "raw_csv_path": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\paco_fgn\\20260224\\sanciones_penales_FGN.csv",
+      "raw_csv_bytes": 540691
+    },
+    "WORLDBANK": {
+      "status": "OK",
+      "pages_seen": 2,
+      "total_records_seen": 10,
+      "total_records_extracted": 10,
+      "raw_html_dir": "C:\\Users\\pc\\OneDrive\\Documentos\\Data project\\tudatos\\data\\raw\\worldbank\\20260224\\html_pages"
+    }
+  },
+  "errors": {
+    "EU": [
+      {
+        "stage": "extract",
+        "error": "403 Client Error: Forbidden for url: https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content"
+      }
+    ]
+  }
+}
